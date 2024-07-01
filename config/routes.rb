@@ -38,34 +38,61 @@ Rails.application.routes.draw do
   end
 
   resources :tags, except: %i[ show destroy ] do
-    resources :deletions, only: %i[ new create ], module: :tags
+    resources :deletions, only: %i[ new create ], module: :tag
   end
 
-  resources :transactions do
+  namespace :category do
+    resource :dropdown, only: :show
+  end
+
+  resources :categories do
+    resources :deletions, only: %i[ new create ], module: :category
+  end
+
+  resources :merchants, only: %i[ index new create edit update destroy ]
+
+  namespace :account do
+    resources :transfers, only: %i[ new create destroy ]
+
+    namespace :transaction do
+      resources :rules, only: %i[ index ]
+    end
+  end
+
+  resources :accounts do
     collection do
-      match "search" => "transactions#search", via: %i[ get post ]
+      get :summary
+      get :list
+    end
 
-      scope module: :transactions, as: :transaction do
-        resources :categories do
-          resources :deletions, only: %i[ new create ], module: :categories
-          collection do
-            resource :dropdown, only: :show, module: :categories, as: :category_dropdown
-          end
+    member do
+      post :sync
+    end
+
+    scope module: :account do
+      resource :logo, only: :show
+
+      resources :entries, except: :index do
+        collection do
+          get "transactions", as: :transaction
+          get "valuations", as: :valuation
         end
-
-        resources :rules, only: %i[ index ]
-        resources :merchants, only: %i[ index new create edit update destroy ]
       end
     end
   end
 
-  resources :accounts, shallow: true do
-    get :summary, on: :collection
-    get :list, on: :collection
-    post :sync, on: :member
-    resource :logo, only: %i[show], module: :accounts
-    resources :valuations
+  resources :transactions, only: %i[ index new create ] do
+    collection do
+      post "bulk_delete"
+      get "bulk_edit"
+      post "bulk_update"
+      post "mark_transfers"
+      post "unmark_transfers"
+      get "rules"
+    end
   end
+
+  resources :institutions, except: %i[ index show ]
 
   # For managing self-hosted upgrades and release notifications
   resources :upgrades, only: [] do

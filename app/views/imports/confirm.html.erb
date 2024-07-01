@@ -9,7 +9,15 @@
   </div>
 
   <div class="mb-8 space-y-4">
-    <%= render partial: "imports/transactions/transaction_group", collection: @import.dry_run.group_by(&:date) %>
+    <% transaction_entries = @import.dry_run %>
+    <% transaction_entries.group_by(&:date).each do |date, transactions| %>
+      <%= render "account/entries/entry_group",
+                 date: date,
+                 entries: transaction_entries,
+                 show_tags: true,
+                 selectable: false,
+                 editable: false %>
+    <% end %>
   </div>
 
   <%= button_to "Import " + @import.csv.table.size.to_s + " transactions", confirm_import_path(@import), method: :patch, class: "px-4 py-2 block w-60 text-center mx-auto rounded-lg bg-gray-900 text-white text-sm font-medium", data: { turbo: false } %>

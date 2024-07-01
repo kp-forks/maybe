@@ -38,7 +38,7 @@ class Import < ApplicationRecord
   end
 
   def get_selected_header_for_field(field)
-    column_mappings&.dig(field) || field.key
+    column_mappings&.dig(field.key) || field.key
   end
 
   def update_csv!(row_idx:, col_idx:, value:)
@@ -55,6 +55,8 @@ class Import < ApplicationRecord
         txn.save!
       end
     end
+
+    self.account.sync
 
     update!(status: "complete")
   rescue => e
@@ -109,7 +111,7 @@ class Import < ApplicationRecord
     end
 
     def generate_transactions
-      transactions = []
+      transaction_entries = []
       category_cache = {}
       tag_cache = {}
 
@@ -122,20 +124,19 @@ class Import < ApplicationRecord
           tags << tag_cache[tag_string] ||= account.family.tags.find_or_initialize_by(name: tag_string)
         end
 
-        category = category_cache[category_name] ||= account.family.transaction_categories.find_or_initialize_by(name: category_name) if category_name.present?
+        category = category_cache[category_name] ||= account.family.categories.find_or_initialize_by(name: category_name) if category_name.present?
 
-        txn = account.transactions.build \
+        entry = account.entries.build \
           name: row["name"].presence || FALLBACK_TRANSACTION_NAME,
           date: Date.iso8601(row["date"]),
-          category: category,
-          tags: tags,
-          amount: BigDecimal(row["amount"]) * -1, # User inputs amounts with opposite signage of our internal representation
-          currency: account.currency
+          currency: account.currency,
+          amount: BigDecimal(row["amount"]) * -1,
+          entryable: Account::Transaction.new(category: category, tags: tags)
 
-        transactions << txn
+        transaction_entries << entry
       end
 
-      transactions
+      transaction_entries
     end
 
     def create_expected_fields
@@ -146,15 +147,18 @@ class Import < ApplicationRecord
 
       name_field = Import::Field.new \
         key: "name",
-        label: "Name"
+        label: "Name",
+        is_optional: true
 
       category_field = Import::Field.new \
         key: "category",
-        label: "Category"
+        label: "Category",
+        is_optional: true
 
       tags_field = Import::Field.new \
         key: "tags",
-        label: "Tags"
+        label: "Tags",
+        is_optional: true
 
       amount_field = Import::Field.new \
         key: "amount",

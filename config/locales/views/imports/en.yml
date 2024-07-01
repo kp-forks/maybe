@@ -18,6 +18,7 @@ en:
       confirm_title: Are you sure?
       invalid_csv: Please load a CSV first
       next: Next
+      optional: "(optional) No column selected"
     confirm:
       confirm_description: Preview your transactions below and check to see if there
         are any changes that are required.
@@ -68,6 +69,7 @@ en:
       requirement1: Dates must be in ISO 8601 format (YYYY-MM-DD)
       requirement2: Negative transaction is an "outflow" (expense), positive is an
         "inflow" (income)
+      requirement3: Can have 0 or more tags separated by |
       subtitle: Import your transactions
     load_csv:
       import_loaded: Import CSV loaded
