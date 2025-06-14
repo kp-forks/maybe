@@ -23,37 +23,27 @@ class PlaidItem < ApplicationRecord
   scope :needs_update, -> { where(status: :requires_update) }
 
   def get_update_link_token(webhooks_url:, redirect_url:)
-    begin
-      family.get_link_token(
-        webhooks_url: webhooks_url,
-        redirect_url: redirect_url,
-        region: plaid_region,
-        access_token: access_token
-      )
-    rescue Plaid::ApiError => e
-      error_body = JSON.parse(e.response_body)
+    family.get_link_token(
+      webhooks_url: webhooks_url,
+      redirect_url: redirect_url,
+      region: plaid_region,
+      access_token: access_token
+    )
+  rescue Plaid::ApiError => e
+    error_body = JSON.parse(e.response_body)
 
-      if error_body["error_code"] == "ITEM_NOT_FOUND"
-        # Mark the connection as invalid but don't auto-delete
-        update!(status: :requires_update)
-        raise PlaidConnectionLostError
-      else
-        raise e
-      end
+    if error_body["error_code"] == "ITEM_NOT_FOUND"
+      # Mark the connection as invalid but don't auto-delete
+      update!(status: :requires_update)
     end
+
+    Sentry.capture_exception(e)
+    nil
   end
 
   def destroy_later
     update!(scheduled_for_deletion: true)
     DestroyJob.perform_later(self)
-  end
-
-  def syncing?
-    Sync.joins("LEFT JOIN accounts a ON a.id = syncs.syncable_id AND syncs.syncable_type = 'Account'")
-        .joins("LEFT JOIN plaid_accounts pa ON pa.id = a.plaid_account_id")
-        .where("syncs.syncable_id = ? OR pa.plaid_item_id = ?", id, id)
-        .visible
-        .exists?
   end
 
   def import_latest_plaid_data
@@ -108,11 +98,17 @@ class PlaidItem < ApplicationRecord
   end
 
   private
-    # Silently swallow and report error so that we don't block the user from deleting the item
     def remove_plaid_item
       plaid_provider.remove_item(access_token)
-    rescue StandardError => e
-      Sentry.capture_exception(e)
+    rescue Plaid::ApiError => e
+      json_response = JSON.parse(e.response_body)
+
+      # If the item is not found, that means it was already deleted by the user on their
+      # Plaid portal OR by Plaid support.  Either way, we're not being billed, so continue
+      # with the deletion of our internal record.
+      unless json_response["error_code"] == "ITEM_NOT_FOUND"
+        raise e
+      end
     end
 
     # Plaid returns mutually exclusive arrays here.  If the item has made a request for a product,
@@ -121,6 +117,4 @@ class PlaidItem < ApplicationRecord
     def supported_products
       available_products + billed_products
     end
-
-    class PlaidConnectionLostError < StandardError; end
 end
