@@ -20,6 +20,11 @@ class PlaidItem::AccountsSnapshot
     )
   end
 
+  def transactions_cursor
+    return nil unless transactions_data
+    transactions_data.cursor
+  end
+
   private
     attr_reader :plaid_item, :plaid_provider
 
@@ -62,18 +67,39 @@ class PlaidItem::AccountsSnapshot
       )
     end
 
+    def can_fetch_transactions?
+      plaid_item.supports_product?("transactions") && accounts.any?
+    end
+
     def transactions_data
-      return nil unless plaid_item.supports_product?("transactions")
-      @transactions_data ||= plaid_provider.get_transactions(plaid_item.access_token)
+      return nil unless can_fetch_transactions?
+
+      @transactions_data ||= plaid_provider.get_transactions(
+        plaid_item.access_token,
+        next_cursor: plaid_item.next_cursor
+      )
+    end
+
+    def can_fetch_investments?
+      plaid_item.supports_product?("investments") &&
+      accounts.any? { |a| a.type == "investment" }
     end
 
     def investments_data
-      return nil unless plaid_item.supports_product?("investments")
+      return nil unless can_fetch_investments?
       @investments_data ||= plaid_provider.get_item_investments(plaid_item.access_token)
     end
 
+    def can_fetch_liabilities?
+      plaid_item.supports_product?("liabilities") &&
+      accounts.any? do |a|
+        a.type == "credit" && a.subtype == "credit card" ||
+        a.type == "loan" && (a.subtype == "mortgage" || a.subtype == "student")
+      end
+    end
+
     def liabilities_data
-      return nil unless plaid_item.supports_product?("liabilities")
+      return nil unless can_fetch_liabilities?
       @liabilities_data ||= plaid_provider.get_item_liabilities(plaid_item.access_token)
     end
 end
